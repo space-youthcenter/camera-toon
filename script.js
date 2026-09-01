@@ -13,7 +13,6 @@
   var cameraControls = document.getElementById("cameraControls");
   var shutterButton = document.getElementById("shutterButton");
   var flipButton = document.getElementById("flipButton");
-  var filterButton = document.getElementById("filterButton");
   var resultSheet = document.getElementById("resultSheet");
   var closeResult = document.getElementById("closeResult");
   var retakeButton = document.getElementById("retakeButton");
@@ -26,12 +25,7 @@
   var frameReady = false;
   var running = false;
   var animationId = 0;
-  var lastFilterAt = 0;
-  var cachedFilter = null;
-  var filters = ["만화", "색연필", "스케치"];
-  var filterIndex = 0;
-  var FILTER_INTERVAL = 90;
-  var FILTER_WIDTH = 260;
+  var PROCESS_WIDTH = 900;
   var lowCanvas = document.createElement("canvas");
   var lowCtx = lowCanvas.getContext("2d", { willReadFrequently: true }) || lowCanvas.getContext("2d");
 
@@ -42,11 +36,6 @@
   flipButton.addEventListener("click", function () {
     facingMode = facingMode === "environment" ? "user" : "environment";
     startCamera();
-  });
-  filterButton.addEventListener("click", function () {
-    filterIndex = (filterIndex + 1) % filters.length;
-    filterButton.textContent = filters[filterIndex];
-    cachedFilter = null;
   });
   shutterButton.addEventListener("click", capturePhoto);
   closeResult.addEventListener("click", closeResultSheet);
@@ -90,7 +79,6 @@
       flipButton.hidden = false;
       hideStatus();
       running = true;
-      cachedFilter = null;
       animationId = requestAnimationFrame(renderLoop);
     }).catch(function (error) {
       var message = error && (error.name === "NotAllowedError" || error.name === "SecurityError")
@@ -117,11 +105,11 @@
 
   function renderLoop(time) {
     if (!running) return;
-    drawScene(time, ctx, canvas.width, canvas.height, false);
+    drawScene(ctx, canvas.width, canvas.height, false);
     animationId = requestAnimationFrame(renderLoop);
   }
 
-  function drawScene(time, targetCtx, width, height, finalQuality) {
+  function drawScene(targetCtx, width, height, makeResult) {
     if (video.readyState < 2) return;
     var source = coverCrop(video.videoWidth, video.videoHeight, width, height);
     targetCtx.save();
@@ -134,16 +122,16 @@
 
     var frame = getFrameRect(width, height);
     var screen = getScreenRect(frame);
-    if (finalQuality || !cachedFilter || time - lastFilterAt > FILTER_INTERVAL) {
-      cachedFilter = createFilteredRegion(source, screen, width, height, finalQuality);
-      lastFilterAt = time;
+    var pencilRegion = null;
+    if (makeResult) {
+      pencilRegion = createPencilRegion(source, screen, width, height);
+      targetCtx.drawImage(pencilRegion, screen.x, screen.y, screen.w, screen.h);
     }
-    if (cachedFilter) targetCtx.drawImage(cachedFilter, screen.x, screen.y, screen.w, screen.h);
-    drawPaperFrame(targetCtx, frame, screen);
+    drawPaperFrame(targetCtx, frame, screen, source, width, height, pencilRegion);
   }
 
-  function createFilteredRegion(source, screen, fullW, fullH, finalQuality) {
-    var scale = finalQuality ? 1 : Math.min(1, FILTER_WIDTH / screen.w);
+  function createPencilRegion(source, screen, fullW, fullH) {
+    var scale = Math.min(1, PROCESS_WIDTH / screen.w);
     var w = Math.max(2, Math.round(screen.w * scale));
     var h = Math.max(2, Math.round(screen.h * scale));
     lowCanvas.width = w;
@@ -162,46 +150,45 @@
     lowCtx.restore();
 
     var pixels = lowCtx.getImageData(0, 0, w, h);
-    applyFilter(pixels, w, h, filterIndex);
+    applyPencilSketch(pixels, w, h);
     lowCtx.putImageData(pixels, 0, 0);
-
-    // 매 프레임 새 캔버스를 만들지 않고 하나를 재사용해 iPhone 메모리 사용을 줄입니다.
     return lowCanvas;
   }
 
-  function applyFilter(pixels, width, height, type) {
+  function applyPencilSketch(pixels, width, height) {
     var data = pixels.data;
-    var original = type === 0 ? null : new Uint8ClampedArray(data);
-    var x, y, i, edge, grain, lum, value;
-    if (type === 0) {
-      for (i = 0; i < data.length; i += 4) {
-        var r = data[i], g = data[i + 1], b = data[i + 2];
-        var max = Math.max(r, g, b);
-        data[i] = quantize(r + (r === max ? 24 : -5), 48);
-        data[i + 1] = quantize(g + (g === max ? 24 : -5), 48);
-        data[i + 2] = quantize(b + (b === max ? 24 : -5), 48);
-      }
-      return;
-    }
+    var original = new Uint8ClampedArray(data);
+    var x, y, i, edge, grain, lum, paper, hatch, ink, r, g, b;
     for (y = 0; y < height; y++) {
       for (x = 0; x < width; x++) {
         i = (y * width + x) * 4;
         edge = edgeAt(original, width, height, x, y);
-        grain = ((x * 17 + y * 31) % 17) - 8;
-        if (type === 1) {
-          data[i] = clamp(original[i] * 1.09 + 20 - edge * .6 + grain);
-          data[i + 1] = clamp(original[i + 1] * 1.04 + 15 - edge * .6 + grain);
-          data[i + 2] = clamp(original[i + 2] * .92 + 20 - edge * .6 + grain);
-        } else {
-          lum = original[i] * .299 + original[i + 1] * .587 + original[i + 2] * .114;
-          value = clamp(255 - edge * 1.7 - Math.max(0, 115 - lum) * .22 + grain);
-          data[i] = data[i + 1] = data[i + 2] = value;
-        }
+        lum = original[i] * .299 + original[i + 1] * .587 + original[i + 2] * .114;
+
+        // 색을 몇 개의 넓은 면으로 단순화한 뒤 크림색 종이를 비쳐 보이게 합니다.
+        r = quantize(original[i] * 1.04 + 9, 36);
+        g = quantize(original[i + 1] * 1.03 + 10, 36);
+        b = quantize(original[i + 2] * .98 + 15, 36);
+        grain = ((x * 19 + y * 37 + (x * y) % 23) % 31) - 15;
+        paper = .16 + (((x * 7 + y * 13) % 29) < 4 ? .28 : 0);
+
+        // 어두운 면에는 일정하지 않은 대각선 크레용 결을 남깁니다.
+        hatch = lum < 175 && ((x + y * 2) % 11 < 2) ? -18 : 0;
+        if (lum < 105 && ((x * 2 - y + 10000) % 17 < 2)) hatch -= 13;
+        r = r * (1 - paper) + 250 * paper + grain * .42 + hatch;
+        g = g * (1 - paper) + 247 * paper + grain * .36 + hatch;
+        b = b * (1 - paper) + 235 * paper + grain * .3 + hatch * .8;
+
+        // 사진의 큰 윤곽만 검은 펜으로 다시 그린 듯 불규칙하게 강조합니다.
+        ink = edge > 24 + ((x * 5 + y * 3) % 13) ? Math.min(.9, (edge - 18) / 72) : 0;
+        data[i] = clamp(r * (1 - ink) + 28 * ink);
+        data[i + 1] = clamp(g * (1 - ink) + 25 * ink);
+        data[i + 2] = clamp(b * (1 - ink) + 23 * ink);
       }
     }
   }
 
-  function drawPaperFrame(targetCtx, frame, screen) {
+  function drawPaperFrame(targetCtx, frame, screen, source, fullW, fullH, pencilRegion) {
     if (frameReady) {
       targetCtx.drawImage(frameImage, frame.x, frame.y, frame.w, frame.h);
       return;
@@ -270,11 +257,15 @@
     targetCtx.lineWidth = line * .25;
     targetCtx.stroke();
 
-    // 중앙 화면 구멍: 이 둥근 영역에만 필터 영상이 다시 그려집니다.
+    // 중앙 화면 구멍: 미리보기에서는 원본, 촬영 결과에서만 색연필 그림을 표시합니다.
     targetCtx.save();
     roundedRect(targetCtx, screen.x, screen.y, screen.w, screen.h, w * .035);
     targetCtx.clip();
-    if (cachedFilter) targetCtx.drawImage(cachedFilter, screen.x, screen.y, screen.w, screen.h);
+    if (pencilRegion) {
+      targetCtx.drawImage(pencilRegion, screen.x, screen.y, screen.w, screen.h);
+    } else {
+      drawVideoRegion(targetCtx, source, screen, fullW, fullH);
+    }
     targetCtx.restore();
     targetCtx.strokeStyle = "#342f2a";
     targetCtx.lineWidth = line * 1.15;
@@ -320,6 +311,20 @@
     targetCtx.font = "900 " + Math.round(w * .052) + "px Arial Rounded MT Bold, Arial";
     targetCtx.fillText("CAMERA TOON!", 0, 0);
     targetCtx.restore();
+    targetCtx.restore();
+  }
+
+  function drawVideoRegion(targetCtx, source, screen, fullW, fullH) {
+    var sx = source.x + screen.x / fullW * source.w;
+    var sy = source.y + screen.y / fullH * source.h;
+    var sw = screen.w / fullW * source.w;
+    var sh = screen.h / fullH * source.h;
+    targetCtx.save();
+    if (facingMode === "user") {
+      targetCtx.translate(screen.x * 2 + screen.w, 0);
+      targetCtx.scale(-1, 1);
+    }
+    targetCtx.drawImage(video, sx, sy, sw, sh, screen.x, screen.y, screen.w, screen.h);
     targetCtx.restore();
   }
 
@@ -389,11 +394,14 @@
     var scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
     resultCanvas.width = Math.max(2, Math.round(video.videoWidth * scale));
     resultCanvas.height = Math.max(2, Math.round(video.videoHeight * scale));
-    cachedFilter = null;
-    drawScene(performance.now(), resultCtx, resultCanvas.width, resultCanvas.height, true);
-    resultSheet.classList.add("open");
-    resultSheet.setAttribute("aria-hidden", "false");
-    shutterButton.disabled = false;
+    showStatus("색연필로 그림을 그리고 있어요…");
+    setTimeout(function () {
+      drawScene(resultCtx, resultCanvas.width, resultCanvas.height, true);
+      resultSheet.classList.add("open");
+      resultSheet.setAttribute("aria-hidden", "false");
+      hideStatus();
+      shutterButton.disabled = false;
+    }, 30);
   }
 
   function closeResultSheet() {
