@@ -3,9 +3,9 @@
 
   var video = document.getElementById("cameraVideo");
   var canvas = document.getElementById("liveCanvas");
-  var ctx = canvas.getContext("2d", { willReadFrequently: true, alpha: false });
+  var ctx = canvas.getContext("2d", { willReadFrequently: true, alpha: false }) || canvas.getContext("2d");
   var resultCanvas = document.getElementById("resultCanvas");
-  var resultCtx = resultCanvas.getContext("2d", { alpha: false });
+  var resultCtx = resultCanvas.getContext("2d", { alpha: false }) || resultCanvas.getContext("2d");
   var frameImage = document.getElementById("frameImage");
   var permissionPanel = document.getElementById("permissionPanel");
   var permissionMessage = document.getElementById("permissionMessage");
@@ -33,7 +33,7 @@
   var FILTER_INTERVAL = 90;
   var FILTER_WIDTH = 260;
   var lowCanvas = document.createElement("canvas");
-  var lowCtx = lowCanvas.getContext("2d", { willReadFrequently: true });
+  var lowCtx = lowCanvas.getContext("2d", { willReadFrequently: true }) || lowCanvas.getContext("2d");
 
   frameImage.onload = function () { frameReady = true; };
   frameImage.onerror = function () { frameReady = false; };
@@ -60,6 +60,10 @@
   });
 
   function startCamera() {
+    if (!ctx || !resultCtx || !lowCtx) {
+      showError("이 기기에서 카메라 화면을 준비하지 못했어요. Safari를 완전히 닫았다가 다시 열어 주세요.");
+      return;
+    }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       showError("이 브라우저에서는 카메라를 사용할 수 없어요. Safari 최신 버전을 이용해 주세요.");
       return;
@@ -161,10 +165,8 @@
     applyFilter(pixels, w, h, filterIndex);
     lowCtx.putImageData(pixels, 0, 0);
 
-    var copy = document.createElement("canvas");
-    copy.width = w; copy.height = h;
-    copy.getContext("2d").drawImage(lowCanvas, 0, 0);
-    return copy;
+    // 매 프레임 새 캔버스를 만들지 않고 하나를 재사용해 iPhone 메모리 사용을 줄입니다.
+    return lowCanvas;
   }
 
   function applyFilter(pixels, width, height, type) {
