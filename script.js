@@ -158,29 +158,71 @@
   function applyPencilSketch(pixels, width, height) {
     var data = pixels.data;
     var original = new Uint8ClampedArray(data);
-    var x, y, i, edge, grain, lum, paper, hatch, ink, r, g, b;
+    var count = width * height;
+    var gray = new Float32Array(count);
+    var soft = new Float32Array(count);
+    var edges = new Float32Array(count);
+    var x, y, i, p, row, prev, next, grain, lum, paper, hatch, ink, r, g, b;
+
+    // 먼저 밝기만 분리하고 살짝 흐리게 만들어 잔머리·피부결 같은 작은 디테일을 줄입니다.
+    for (p = 0; p < count; p++) {
+      i = p * 4;
+      gray[p] = original[i] * .299 + original[i + 1] * .587 + original[i + 2] * .114;
+    }
+    for (y = 1; y < height - 1; y++) {
+      row = y * width;
+      for (x = 1; x < width - 1; x++) {
+        p = row + x;
+        soft[p] = (gray[p - width - 1] + gray[p - width] * 2 + gray[p - width + 1] +
+          gray[p - 1] * 2 + gray[p] * 4 + gray[p + 1] * 2 +
+          gray[p + width - 1] + gray[p + width] * 2 + gray[p + width + 1]) / 16;
+      }
+    }
+
+    // 흐린 밝기 영상에서 큰 형태의 윤곽만 찾아 펜선 지도를 만듭니다.
+    for (y = 2; y < height - 2; y++) {
+      row = y * width;
+      for (x = 2; x < width - 2; x++) {
+        p = row + x;
+        var gx = -soft[p - width - 1] + soft[p - width + 1] - soft[p - 1] * 2 + soft[p + 1] * 2 - soft[p + width - 1] + soft[p + width + 1];
+        var gy = -soft[p - width - 1] - soft[p - width] * 2 - soft[p - width + 1] + soft[p + width - 1] + soft[p + width] * 2 + soft[p + width + 1];
+        edges[p] = Math.sqrt(gx * gx + gy * gy);
+      }
+    }
+
     for (y = 0; y < height; y++) {
+      row = y * width;
       for (x = 0; x < width; x++) {
-        i = (y * width + x) * 4;
-        edge = edgeAt(original, width, height, x, y);
+        p = row + x;
+        i = p * 4;
         lum = original[i] * .299 + original[i + 1] * .587 + original[i + 2] * .114;
+        prev = Math.max(0, p - 2);
+        next = Math.min(count - 1, p + 2);
+        var up = Math.max(0, p - width * 2);
+        var down = Math.min(count - 1, p + width * 2);
 
-        // 색을 몇 개의 넓은 면으로 단순화한 뒤 크림색 종이를 비쳐 보이게 합니다.
-        r = quantize(original[i] * 1.04 + 9, 36);
-        g = quantize(original[i + 1] * 1.03 + 10, 36);
-        b = quantize(original[i + 2] * .98 + 15, 36);
+        // 주변색을 섞고 넓은 색면으로 나눠 사진의 부드러운 그라데이션을 없앱니다.
+        r = quantize((original[i] * 3 + original[prev * 4] + original[next * 4] + original[up * 4] + original[down * 4]) / 7 * 1.06 + 8, 44);
+        g = quantize((original[i + 1] * 3 + original[prev * 4 + 1] + original[next * 4 + 1] + original[up * 4 + 1] + original[down * 4 + 1]) / 7 * 1.04 + 10, 44);
+        b = quantize((original[i + 2] * 3 + original[prev * 4 + 2] + original[next * 4 + 2] + original[up * 4 + 2] + original[down * 4 + 2]) / 7 * .98 + 16, 44);
         grain = ((x * 19 + y * 37 + (x * y) % 23) % 31) - 15;
-        paper = .16 + (((x * 7 + y * 13) % 29) < 4 ? .28 : 0);
+        paper = .18 + (((x * 7 + y * 13) % 31) < 5 ? .32 : 0);
 
-        // 어두운 면에는 일정하지 않은 대각선 크레용 결을 남깁니다.
-        hatch = lum < 175 && ((x + y * 2) % 11 < 2) ? -18 : 0;
-        if (lum < 105 && ((x * 2 - y + 10000) % 17 < 2)) hatch -= 13;
+        // 두 방향의 끊어진 해칭으로 색연필을 여러 번 문지른 결을 만듭니다.
+        hatch = lum < 205 && ((x + y * 2 + (y % 5)) % 12 < 2) ? -17 : 0;
+        if (lum < 145 && ((x * 2 - y + 10000 + (x % 7)) % 17 < 2)) hatch -= 15;
+        if (((x * 3 + y * 5) % 53) === 0) hatch += 30;
         r = r * (1 - paper) + 250 * paper + grain * .42 + hatch;
         g = g * (1 - paper) + 247 * paper + grain * .36 + hatch;
         b = b * (1 - paper) + 235 * paper + grain * .3 + hatch * .8;
 
-        // 사진의 큰 윤곽만 검은 펜으로 다시 그린 듯 불규칙하게 강조합니다.
-        ink = edge > 24 + ((x * 5 + y * 3) % 13) ? Math.min(.9, (edge - 18) / 72) : 0;
+        // 이웃 윤곽을 조금씩 어긋나게 겹쳐 여러 번 그은 손펜 선을 만듭니다.
+        var roughEdge = edges[p] || 0;
+        if (x > 1 && y > 1) roughEdge = Math.max(roughEdge, edges[p - width - 1] * .78);
+        if (((x * 11 + y * 7) % 19) < 9 && x < width - 2) roughEdge = Math.max(roughEdge, edges[p + 1] * .7);
+        var threshold = 42 + ((x * 5 + y * 3) % 21);
+        ink = roughEdge > threshold ? Math.min(.92, (roughEdge - threshold + 28) / 150) : 0;
+        if (((x * 13 + y * 17) % 47) === 0) ink *= .35;
         data[i] = clamp(r * (1 - ink) + 28 * ink);
         data[i + 1] = clamp(g * (1 - ink) + 25 * ink);
         data[i + 2] = clamp(b * (1 - ink) + 23 * ink);
@@ -438,15 +480,6 @@
     }
     var h = sourceW / targetRatio;
     return { x: 0, y: (sourceH - h) / 2, w: sourceW, h: h };
-  }
-
-  function edgeAt(data, width, height, x, y) {
-    var x2 = Math.min(width - 1, x + 1), y2 = Math.min(height - 1, y + 1);
-    var i = (y * width + x) * 4, ix = (y * width + x2) * 4, iy = (y2 * width + x) * 4;
-    var here = data[i] * .299 + data[i + 1] * .587 + data[i + 2] * .114;
-    var right = data[ix] * .299 + data[ix + 1] * .587 + data[ix + 2] * .114;
-    var down = data[iy] * .299 + data[iy + 1] * .587 + data[iy + 2] * .114;
-    return Math.abs(here - right) + Math.abs(here - down);
   }
 
   function roundedRect(context, x, y, w, h, r) {
