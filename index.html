@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#fff8e8" />
+    <meta name="description" content="사진 속 한 장면을 만화처럼 바꾸는 Camera Toon" />
+    <title>Camera Toon</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="hero">
+        <span class="eyebrow">📸 PAPER CAMERA LAB</span>
+        <h1>Camera <span>Toon</span></h1>
+        <p>사진 한 장을 골라 종이 카메라 속 세상을 만화처럼 바꿔보세요.</p>
+        <div class="privacy-note">🔒 사진은 업로드되지 않고 이 기기에서만 처리돼요.</div>
+      </header>
+
+      <section class="panel controls" aria-labelledby="make-title">
+        <div class="step-title"><b>1</b><h2 id="make-title">사진 고르기</h2></div>
+        <label class="upload-button" for="photoInput">
+          <span aria-hidden="true">＋</span>
+          <strong>사진 선택</strong>
+          <small>사진 보관함 또는 카메라</small>
+        </label>
+        <input id="photoInput" type="file" accept="image/*" />
+
+        <div class="step-title filter-title"><b>2</b><h2>느낌 고르기</h2></div>
+        <div class="filter-list" role="radiogroup" aria-label="사진 필터">
+          <button class="filter-button active" type="button" data-filter="pencil" aria-pressed="true"><span>🖍️</span>색연필</button>
+          <button class="filter-button" type="button" data-filter="comic" aria-pressed="false"><span>💥</span>만화</button>
+          <button class="filter-button" type="button" data-filter="sketch" aria-pressed="false"><span>✏️</span>흑백 스케치</button>
+        </div>
+      </section>
+
+      <section class="result-section" aria-labelledby="result-title">
+        <div class="step-title"><b>3</b><h2 id="result-title">완성된 사진</h2></div>
+        <div class="canvas-wrap" id="canvasWrap">
+          <canvas id="resultCanvas" aria-label="Camera Toon 결과 미리보기"></canvas>
+          <div class="empty-state" id="emptyState">
+            <div class="empty-camera" aria-hidden="true"><i></i></div>
+            <strong>어떤 장면을 담아볼까요?</strong>
+            <span>사진을 선택하면 여기에 나타나요.</span>
+          </div>
+        </div>
+        <p class="hint" id="hint">카메라 화면 안쪽에만 선택한 효과가 적용돼요.</p>
+        <button id="saveButton" class="save-button" type="button" disabled>
+          <span>↓</span> 결과 이미지 저장
+        </button>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <img id="frameImage" src="assets/frame-camera.png" alt="" hidden />
+    <script src="script.js"></script>
+  </body>
+</html>
