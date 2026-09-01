@@ -8,7 +8,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="description" content="종이 카메라로 찍으면 화면 속만 색연필 그림이 되는 놀이 카메라" />
     <title>Camera Toon — 종이 색연필 카메라</title>
-    <link rel="stylesheet" href="style.css?v=5" />
+    <link rel="stylesheet" href="style.css?v=6" />
   </head>
   <body>
     <main class="camera-app">
@@ -35,14 +35,14 @@
         <div class="camera-controls" id="cameraControls" hidden>
           <span class="control-spacer"></span>
           <button id="shutterButton" class="shutter" type="button" aria-label="사진 촬영"><i></i></button>
-          <span class="after-note">촬영 후<br />색연필 변환</span>
+          <span class="after-note">PAPER TOON<br />색연필 손그림</span>
         </div>
       </section>
     </main>
 
     <section id="resultSheet" class="result-sheet" aria-label="촬영 결과" aria-hidden="true">
       <div class="sheet-card">
-        <header><strong>찰칵! 색연필 그림 완성</strong><button id="closeResult" type="button" aria-label="결과 닫기">×</button></header>
+        <header><strong>찰칵! Paper Toon 완성</strong><button id="closeResult" type="button" aria-label="결과 닫기">×</button></header>
         <canvas id="resultCanvas"></canvas>
         <div class="result-actions">
           <button id="retakeButton" class="secondary-button" type="button">다시 찍기</button>
@@ -54,6 +54,6 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <img id="frameImage" src="assets/frame-camera.png" alt="" hidden />
-    <script src="script.js?v=5"></script>
+    <script src="script.js?v=6"></script>
   </body>
 </html>
