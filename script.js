@@ -25,6 +25,7 @@
   var frameReady = false;
   var running = false;
   var animationId = 0;
+  var resizeTimer = 0;
   var PROCESS_WIDTH = 900;
   var lowCanvas = document.createElement("canvas");
   var lowCtx = lowCanvas.getContext("2d", { willReadFrequently: true }) || lowCanvas.getContext("2d");
@@ -41,7 +42,12 @@
   closeResult.addEventListener("click", closeResultSheet);
   retakeButton.addEventListener("click", closeResultSheet);
   saveButton.addEventListener("click", savePhoto);
-  window.addEventListener("resize", resizeCanvas);
+  window.addEventListener("resize", function () { scheduleResize(90); });
+  window.addEventListener("orientationchange", function () { scheduleResize(220); });
+  video.addEventListener("resize", function () { scheduleResize(60); });
+  if (screen.orientation && screen.orientation.addEventListener) {
+    screen.orientation.addEventListener("change", function () { scheduleResize(180); });
+  }
   window.addEventListener("pagehide", stopCamera);
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) cancelAnimationFrame(animationId);
@@ -99,8 +105,18 @@
 
   function resizeCanvas() {
     var ratio = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.round(window.innerWidth * ratio);
-    canvas.height = Math.round(window.innerHeight * ratio);
+    var cssWidth = Math.max(1, document.documentElement.clientWidth || window.innerWidth);
+    var cssHeight = Math.max(1, document.documentElement.clientHeight || window.innerHeight);
+    canvas.width = Math.round(cssWidth * ratio);
+    canvas.height = Math.round(cssHeight * ratio);
+  }
+
+  function scheduleResize(delay) {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      resizeCanvas();
+      if (running && video.readyState >= 2) drawScene(ctx, canvas.width, canvas.height, false);
+    }, delay || 80);
   }
 
   function renderLoop(time) {
@@ -417,12 +433,14 @@
   }
 
   function getFrameRect(width, height) {
-    var maxW = width * .92;
-    var maxH = height * .62;
-    var ratio = frameReady && frameImage.naturalWidth ? frameImage.naturalWidth / frameImage.naturalHeight : 1.32;
+    var landscape = width > height;
+    var maxW = width * (landscape ? .78 : .92);
+    var maxH = height * (landscape ? .68 : .62);
+    var fallbackRatio = landscape ? 2 : 1.32;
+    var ratio = frameReady && frameImage.naturalWidth ? frameImage.naturalWidth / frameImage.naturalHeight : fallbackRatio;
     var w = maxW, h = w / ratio;
     if (h > maxH) { h = maxH; w = h * ratio; }
-    return { x: (width - w) / 2, y: (height - h) * .46, w: w, h: h };
+    return { x: (width - w) / 2, y: (height - h) * (landscape ? .38 : .46), w: w, h: h };
   }
 
   function getScreenRect(frame) {
@@ -438,9 +456,10 @@
     if (!running || video.readyState < 2) return;
     shutterButton.disabled = true;
     var maxSide = 1800;
-    var scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
-    resultCanvas.width = Math.max(2, Math.round(video.videoWidth * scale));
-    resultCanvas.height = Math.max(2, Math.round(video.videoHeight * scale));
+    // 카메라 센서의 고정 방향이 아니라 현재 보이는 캔버스 비율로 결과를 만듭니다.
+    var scale = Math.min(1, maxSide / Math.max(canvas.width, canvas.height));
+    resultCanvas.width = Math.max(2, Math.round(canvas.width * scale));
+    resultCanvas.height = Math.max(2, Math.round(canvas.height * scale));
     showStatus("색연필로 그림을 그리고 있어요…");
     setTimeout(function () {
       drawScene(resultCtx, resultCanvas.width, resultCanvas.height, true);
