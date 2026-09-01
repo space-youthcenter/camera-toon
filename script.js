@@ -376,15 +376,20 @@
 
   function getFrameRect(width, height) {
     var maxW = width * .92;
-    var maxH = height * .54;
-    var ratio = frameReady && frameImage.naturalWidth ? frameImage.naturalWidth / frameImage.naturalHeight : 1.46;
+    var maxH = height * .62;
+    var ratio = frameReady && frameImage.naturalWidth ? frameImage.naturalWidth / frameImage.naturalHeight : 1.32;
     var w = maxW, h = w / ratio;
     if (h > maxH) { h = maxH; w = h * ratio; }
-    return { x: (width - w) / 2, y: (height - h) * .47, w: w, h: h };
+    return { x: (width - w) / 2, y: (height - h) * .46, w: w, h: h };
   }
 
   function getScreenRect(frame) {
-    return { x: Math.round(frame.x + frame.w * .135), y: Math.round(frame.y + frame.h * .245), w: Math.round(frame.w * .73), h: Math.round(frame.h * .48) };
+    return {
+      x: Math.round(frame.x + frame.w * .11),
+      y: Math.round(frame.y + frame.h * .17),
+      w: Math.round(frame.w * .78),
+      h: Math.round(frame.h * .64)
+    };
   }
 
   function capturePhoto() {
