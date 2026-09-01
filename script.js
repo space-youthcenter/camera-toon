@@ -204,46 +204,180 @@
       targetCtx.drawImage(frameImage, frame.x, frame.y, frame.w, frame.h);
       return;
     }
-    var line = Math.max(5, frame.w * .013);
+    var line = Math.max(5, frame.w * .014);
+    var x = frame.x, y = frame.y, w = frame.w, h = frame.h;
     targetCtx.save();
     targetCtx.lineJoin = "round";
     targetCtx.lineCap = "round";
-    targetCtx.fillStyle = "#f4c74f";
-    targetCtx.strokeStyle = "#342f2a";
-    targetCtx.lineWidth = line;
-    roundedRect(targetCtx, frame.x, frame.y, frame.w, frame.h, frame.w * .055);
+
+    // 오려 붙인 종이처럼 살짝 어긋난 뒷면과 짙은 그림자.
+    targetCtx.save();
+    targetCtx.translate(w * .018, h * .035);
+    paperBodyPath(targetCtx, x, y, w, h);
+    targetCtx.fillStyle = "rgba(20,16,12,.52)";
+    targetCtx.fill();
+    targetCtx.restore();
+
+    targetCtx.save();
+    targetCtx.translate(-w * .012, h * .012);
+    paperBodyPath(targetCtx, x, y, w, h);
+    targetCtx.fillStyle = "#d7b971";
+    targetCtx.strokeStyle = "#2f2924";
+    targetCtx.lineWidth = line * .75;
     targetCtx.fill(); targetCtx.stroke();
-    targetCtx.fillStyle = "#f47e58";
-    roundedRect(targetCtx, frame.x + frame.w * .08, frame.y - frame.h * .065, frame.w * .25, frame.h * .14, line * 1.5);
+    targetCtx.restore();
+
+    paperBodyPath(targetCtx, x, y, w, h);
+    targetCtx.fillStyle = "#fff4d2";
+    targetCtx.strokeStyle = "#2f2924";
+    targetCtx.lineWidth = line;
     targetCtx.fill(); targetCtx.stroke();
 
-    targetCtx.clearRect(screen.x, screen.y, screen.w, screen.h);
-    if (cachedFilter) targetCtx.drawImage(cachedFilter, screen.x, screen.y, screen.w, screen.h);
-    targetCtx.strokeStyle = "#342f2a";
-    targetCtx.lineWidth = line;
-    targetCtx.strokeRect(screen.x, screen.y, screen.w, screen.h);
-    targetCtx.fillStyle = "#7dc9bf";
-    targetCtx.beginPath();
-    targetCtx.arc(frame.x + frame.w * .88, frame.y + frame.h * .17, frame.w * .035, 0, Math.PI * 2);
+    // 종이 섬유와 잉크 점: 좌표가 고정되어 영상에서도 흔들리지 않습니다.
+    targetCtx.fillStyle = "rgba(116,83,40,.12)";
+    for (var dot = 0; dot < 72; dot++) {
+      var dx = x + ((dot * 67) % 97) / 97 * w;
+      var dy = y + ((dot * 43) % 89) / 89 * h;
+      targetCtx.beginPath();
+      targetCtx.arc(dx, dy, Math.max(1, w * (((dot % 3) + 1) * .0014)), 0, Math.PI * 2);
+      targetCtx.fill();
+    }
+    targetCtx.strokeStyle = "rgba(135,101,55,.15)";
+    targetCtx.lineWidth = Math.max(1, line * .15);
+    for (var fiber = 0; fiber < 9; fiber++) {
+      var fy = y + h * (.13 + fiber * .09);
+      targetCtx.beginPath();
+      targetCtx.moveTo(x + w * .05, fy);
+      targetCtx.bezierCurveTo(x + w * .3, fy - h * .012, x + w * .65, fy + h * .015, x + w * .95, fy - h * .005);
+      targetCtx.stroke();
+    }
+
+    // 위쪽 종이 셔터 받침과 눌러 보는 빨간 버튼.
+    targetCtx.fillStyle = "#f0dcaa";
+    targetCtx.strokeStyle = "#2f2924";
+    targetCtx.lineWidth = line * .72;
+    irregularTabPath(targetCtx, x + w * .12, y - h * .088, w * .25, h * .14);
     targetCtx.fill(); targetCtx.stroke();
+    targetCtx.fillStyle = "#f47e58";
+    roundedRect(targetCtx, x + w * .175, y - h * .125, w * .13, h * .085, line);
+    targetCtx.fill(); targetCtx.stroke();
+    targetCtx.beginPath();
+    targetCtx.moveTo(x + w * .19, y - h * .095);
+    targetCtx.lineTo(x + w * .29, y - h * .105);
+    targetCtx.strokeStyle = "rgba(255,255,255,.8)";
+    targetCtx.lineWidth = line * .25;
+    targetCtx.stroke();
+
+    // 중앙 화면 구멍: 이 둥근 영역에만 필터 영상이 다시 그려집니다.
+    targetCtx.save();
+    roundedRect(targetCtx, screen.x, screen.y, screen.w, screen.h, w * .035);
+    targetCtx.clip();
+    if (cachedFilter) targetCtx.drawImage(cachedFilter, screen.x, screen.y, screen.w, screen.h);
+    targetCtx.restore();
+    targetCtx.strokeStyle = "#342f2a";
+    targetCtx.lineWidth = line * 1.15;
+    roundedRect(targetCtx, screen.x, screen.y, screen.w, screen.h, w * .035);
+    targetCtx.stroke();
+    targetCtx.strokeStyle = "rgba(255,255,255,.72)";
+    targetCtx.lineWidth = line * .25;
+    roundedRect(targetCtx, screen.x + line * .8, screen.y + line * .8, screen.w - line * 1.6, screen.h - line * 1.6, w * .026);
+    targetCtx.stroke();
+
+    // 플래시: 접은 은색 종이에 노란 별빛을 붙인 모양.
+    targetCtx.fillStyle = "#d9f0ea";
+    targetCtx.strokeStyle = "#2f2924";
+    targetCtx.lineWidth = line * .65;
+    roundedRect(targetCtx, x + w * .69, y + h * .075, w * .18, h * .105, line * .8);
+    targetCtx.fill(); targetCtx.stroke();
+    targetCtx.strokeStyle = "#f1b829";
+    targetCtx.lineWidth = line * .45;
+    targetCtx.beginPath();
+    targetCtx.moveTo(x + w * .715, y + h * .125); targetCtx.lineTo(x + w * .845, y + h * .125);
+    targetCtx.moveTo(x + w * .78, y + h * .088); targetCtx.lineTo(x + w * .78, y + h * .163);
+    targetCtx.stroke();
+
+    // 장식 스티커와 작은 구멍들이 공작품 느낌을 더합니다.
+    drawStar(targetCtx, x + w * .085, y + h * .18, w * .043, "#f5c84c", line * .42);
+    drawHeart(targetCtx, x + w * .915, y + h * .74, w * .043, "#ef7890", line * .42);
+    targetCtx.fillStyle = "#79c9bd";
+    targetCtx.strokeStyle = "#2f2924";
+    targetCtx.lineWidth = line * .55;
+    targetCtx.beginPath();
+    targetCtx.arc(x + w * .092, y + h * .81, w * .027, 0, Math.PI * 2);
+    targetCtx.fill(); targetCtx.stroke();
+
+    // 손으로 쓴 라벨과 마스킹테이프.
+    targetCtx.save();
+    targetCtx.translate(x + w * .5, y + h * .86);
+    targetCtx.rotate(-.025);
+    targetCtx.fillStyle = "rgba(244,126,88,.62)";
+    targetCtx.fillRect(-w * .19, -h * .065, w * .38, h * .12);
     targetCtx.fillStyle = "#342f2a";
     targetCtx.textAlign = "center";
-    targetCtx.font = "900 " + Math.round(frame.w * .052) + "px Arial";
-    targetCtx.fillText("CAMERA TOON", frame.x + frame.w / 2, frame.y + frame.h * .89);
+    targetCtx.textBaseline = "middle";
+    targetCtx.font = "900 " + Math.round(w * .052) + "px Arial Rounded MT Bold, Arial";
+    targetCtx.fillText("CAMERA TOON!", 0, 0);
     targetCtx.restore();
+    targetCtx.restore();
+  }
+
+  function paperBodyPath(context, x, y, w, h) {
+    context.beginPath();
+    context.moveTo(x + w * .055, y + h * .035);
+    context.quadraticCurveTo(x + w * .015, y + h * .04, x + w * .018, y + h * .12);
+    context.lineTo(x + w * .027, y + h * .87);
+    context.quadraticCurveTo(x + w * .03, y + h * .97, x + w * .12, y + h * .965);
+    context.lineTo(x + w * .89, y + h * .978);
+    context.quadraticCurveTo(x + w * .975, y + h * .97, x + w * .97, y + h * .87);
+    context.lineTo(x + w * .983, y + h * .13);
+    context.quadraticCurveTo(x + w * .98, y + h * .045, x + w * .91, y + h * .04);
+    context.lineTo(x + w * .61, y + h * .025);
+    context.quadraticCurveTo(x + w * .56, y - h * .035, x + w * .48, y + h * .005);
+    context.lineTo(x + w * .055, y + h * .035);
+    context.closePath();
+  }
+
+  function irregularTabPath(context, x, y, w, h) {
+    context.beginPath();
+    context.moveTo(x + w * .08, y + h);
+    context.lineTo(x + w * .02, y + h * .22);
+    context.quadraticCurveTo(x + w * .04, 0 + y, x + w * .2, y + h * .04);
+    context.lineTo(x + w * .84, y + h * .01);
+    context.quadraticCurveTo(x + w, y + h * .04, x + w * .98, y + h * .24);
+    context.lineTo(x + w * .94, y + h);
+    context.closePath();
+  }
+
+  function drawStar(context, cx, cy, radius, color, strokeWidth) {
+    context.save(); context.beginPath();
+    for (var point = 0; point < 10; point++) {
+      var angle = -Math.PI / 2 + point * Math.PI / 5;
+      var r = point % 2 ? radius * .46 : radius;
+      var px = cx + Math.cos(angle) * r, py = cy + Math.sin(angle) * r;
+      if (!point) context.moveTo(px, py); else context.lineTo(px, py);
+    }
+    context.closePath(); context.fillStyle = color; context.strokeStyle = "#2f2924"; context.lineWidth = strokeWidth; context.fill(); context.stroke(); context.restore();
+  }
+
+  function drawHeart(context, cx, cy, size, color, strokeWidth) {
+    context.save(); context.beginPath();
+    context.moveTo(cx, cy + size * .8);
+    context.bezierCurveTo(cx - size * 1.2, cy + size * .05, cx - size * .9, cy - size * .75, cx, cy - size * .18);
+    context.bezierCurveTo(cx + size * .9, cy - size * .75, cx + size * 1.2, cy + size * .05, cx, cy + size * .8);
+    context.closePath(); context.fillStyle = color; context.strokeStyle = "#2f2924"; context.lineWidth = strokeWidth; context.fill(); context.stroke(); context.restore();
   }
 
   function getFrameRect(width, height) {
     var maxW = width * .92;
     var maxH = height * .54;
-    var ratio = frameReady && frameImage.naturalWidth ? frameImage.naturalWidth / frameImage.naturalHeight : 1.38;
+    var ratio = frameReady && frameImage.naturalWidth ? frameImage.naturalWidth / frameImage.naturalHeight : 1.46;
     var w = maxW, h = w / ratio;
     if (h > maxH) { h = maxH; w = h * ratio; }
     return { x: (width - w) / 2, y: (height - h) * .47, w: w, h: h };
   }
 
   function getScreenRect(frame) {
-    return { x: Math.round(frame.x + frame.w * .205), y: Math.round(frame.y + frame.h * .245), w: Math.round(frame.w * .59), h: Math.round(frame.h * .49) };
+    return { x: Math.round(frame.x + frame.w * .135), y: Math.round(frame.y + frame.h * .245), w: Math.round(frame.w * .73), h: Math.round(frame.h * .48) };
   }
 
   function capturePhoto() {
