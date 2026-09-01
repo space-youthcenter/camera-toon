@@ -21,15 +21,41 @@
 
 API 키는 브라우저 코드나 GitHub 저장소에 넣지 않습니다.
 
+> **배포 환경에 따른 차이**
+>
+> - **GitHub Pages:** Netlify Functions를 실행할 수 없으므로 OpenAI AI 변환은 작동하지 않습니다. 카메라·촬영·저장과 브라우저 캔버스 fallback 확인용입니다.
+> - **Netlify:** `/api/transform` 요청이 Netlify Function으로 연결되므로 `OPENAI_API_KEY`가 설정되어 있으면 OpenAI AI 변환이 작동합니다.
+
 ## Netlify 배포
 
 1. 이 GitHub 저장소를 Netlify의 **Import an existing project**로 연결합니다.
-2. Build command는 비워 두고 Publish directory는 `.`을 사용합니다.
-3. Netlify의 **Environment variables**에 `OPENAI_API_KEY`를 추가합니다.
-4. 선택적으로 `OPENAI_IMAGE_MODEL=gpt-image-2`를 추가합니다.
-5. 배포 후 `/api/transform` 요청은 `netlify/functions/transform-image.mjs`에서 처리됩니다.
+2. 배포 설정을 아래와 같이 입력합니다.
 
-GitHub Pages에서는 서버리스 함수를 실행할 수 없으므로 AI 호출 대신 기존 캔버스 fallback이 사용됩니다.
+   | 항목 | 설정값 |
+   | --- | --- |
+   | Production branch | `main` |
+   | Base directory | 비워 둠 |
+   | Build command | 비워 둠 |
+   | Publish directory | `.` |
+   | Functions directory | `netlify/functions` |
+
+   이 앱은 HTML, CSS, JavaScript 정적 파일을 그대로 배포하므로 Build command가 필요하지 않습니다. 저장소의 `netlify.toml`에도 같은 설정이 들어 있습니다.
+
+3. Netlify 사이트 화면에서 **Project configuration → Environment variables**로 이동합니다.
+4. **Add a variable**을 눌러 Key에 `OPENAI_API_KEY`, Value에 실제 OpenAI API 키를 입력합니다. 저장소, `script.js`, `netlify.toml`에는 키를 적지 마세요.
+5. 범위(scope)를 선택할 수 있는 요금제라면 **Functions**를 포함합니다. 배포 문맥은 최소 **Production**에 값을 설정합니다.
+6. 선택적으로 `OPENAI_IMAGE_MODEL`을 추가하고 값으로 `gpt-image-2`를 입력합니다. 생략해도 함수의 기본값은 `gpt-image-2`입니다.
+7. 환경 변수를 추가하거나 변경한 뒤에는 **Deploys → Trigger deploy → Deploy site**로 다시 배포해야 새 값이 적용됩니다.
+
+함수 파일은 `netlify/functions/transform-image.mjs`이고, 공통 OpenAI 호출 코드는 `netlify/functions/lib/openai-image.mjs`입니다. `netlify.toml`의 리다이렉트가 `/api/transform`을 `/.netlify/functions/transform-image`로 연결합니다.
+
+배포가 끝나면 Netlify가 제공한 다음 형식의 운영 주소에서 앱을 여세요.
+
+`https://YOUR-NETLIFY-SITE-NAME.netlify.app/`
+
+이 주소에서 카메라 촬영을 완료한 뒤 결과 생성 상태에 **AI Paper Toon**이 표시되는지 확인합니다. API 주소는 `https://YOUR-NETLIFY-SITE-NAME.netlify.app/api/transform`이지만 POST 전용이므로 주소창에서 직접 여는 방식이 아니라 앱에서 촬영하여 테스트해야 합니다.
+
+AI 변환이 실패하면 결과는 자동으로 **브라우저 Paper Toon** fallback으로 생성됩니다. 이때 Netlify의 **Logs → Functions → transform-image** 로그에서 API 키, 결제 한도, 모델 접근 권한 또는 요청 오류를 확인할 수 있습니다.
 
 ## GitHub Pages 배포
 
@@ -40,6 +66,8 @@ GitHub Pages에서는 서버리스 함수를 실행할 수 없으므로 AI 호�
 배포 주소 형식은 다음과 같습니다.
 
 `https://GITHUB-USERNAME.github.io/camera-toon/`
+
+현재 주소 `https://space-youthcenter.github.io/camera-toon/`에서는 OpenAI AI 변환이 작동하지 않습니다. 이 주소는 카메라 권한, 화면 방향 전환, 촬영, 저장 및 브라우저 fallback 테스트용으로 계속 사용할 수 있습니다. AI 변환 여부는 반드시 Netlify의 `*.netlify.app` 주소에서 확인하세요.
 
 ## 실제 카메라 프레임 사용
 
