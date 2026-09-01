@@ -26,9 +26,12 @@
   var running = false;
   var animationId = 0;
   var resizeTimer = 0;
-  var PROCESS_WIDTH = 900;
   var lowCanvas = document.createElement("canvas");
   var lowCtx = lowCanvas.getContext("2d", { willReadFrequently: true }) || lowCanvas.getContext("2d");
+  var capturedCanvas = document.createElement("canvas");
+  var capturedCtx = capturedCanvas.getContext("2d", { alpha: false }) || capturedCanvas.getContext("2d");
+  var cropCanvas = document.createElement("canvas");
+  var cropCtx = cropCanvas.getContext("2d", { willReadFrequently: true }) || cropCanvas.getContext("2d");
 
   frameImage.onload = function () { frameReady = true; };
   frameImage.onerror = function () { frameReady = false; };
@@ -55,7 +58,7 @@
   });
 
   function startCamera() {
-    if (!ctx || !resultCtx || !lowCtx) {
+    if (!ctx || !resultCtx || !lowCtx || !capturedCtx || !cropCtx) {
       showError("이 기기에서 카메라 화면을 준비하지 못했어요. Safari를 완전히 닫았다가 다시 열어 주세요.");
       return;
     }
@@ -115,18 +118,26 @@
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function () {
       resizeCanvas();
-      if (running && video.readyState >= 2) drawScene(ctx, canvas.width, canvas.height, false);
+      if (running && video.readyState >= 2) drawScene(ctx, canvas.width, canvas.height);
     }, delay || 80);
   }
 
   function renderLoop(time) {
     if (!running) return;
-    drawScene(ctx, canvas.width, canvas.height, false);
+    drawScene(ctx, canvas.width, canvas.height);
     animationId = requestAnimationFrame(renderLoop);
   }
 
-  function drawScene(targetCtx, width, height, makeResult) {
+  function drawScene(targetCtx, width, height) {
     if (video.readyState < 2) return;
+    var source = drawCurrentVideo(targetCtx, width, height);
+
+    var frame = getFrameRect(width, height);
+    var screen = getScreenRect(frame);
+    drawPaperFrame(targetCtx, frame, screen, source, width, height, null);
+  }
+
+  function drawCurrentVideo(targetCtx, width, height) {
     var source = coverCrop(video.videoWidth, video.videoHeight, width, height);
     targetCtx.save();
     if (facingMode === "user") {
@@ -135,40 +146,7 @@
     }
     targetCtx.drawImage(video, source.x, source.y, source.w, source.h, 0, 0, width, height);
     targetCtx.restore();
-
-    var frame = getFrameRect(width, height);
-    var screen = getScreenRect(frame);
-    var pencilRegion = null;
-    if (makeResult) {
-      pencilRegion = createPencilRegion(source, screen, width, height);
-      targetCtx.drawImage(pencilRegion, screen.x, screen.y, screen.w, screen.h);
-    }
-    drawPaperFrame(targetCtx, frame, screen, source, width, height, pencilRegion);
-  }
-
-  function createPencilRegion(source, screen, fullW, fullH) {
-    var scale = Math.min(1, PROCESS_WIDTH / screen.w);
-    var w = Math.max(2, Math.round(screen.w * scale));
-    var h = Math.max(2, Math.round(screen.h * scale));
-    lowCanvas.width = w;
-    lowCanvas.height = h;
-
-    var sx = source.x + screen.x / fullW * source.w;
-    var sy = source.y + screen.y / fullH * source.h;
-    var sw = screen.w / fullW * source.w;
-    var sh = screen.h / fullH * source.h;
-    lowCtx.save();
-    if (facingMode === "user") {
-      lowCtx.translate(w, 0);
-      lowCtx.scale(-1, 1);
-    }
-    lowCtx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
-    lowCtx.restore();
-
-    var pixels = lowCtx.getImageData(0, 0, w, h);
-    applyPencilSketch(pixels, w, h);
-    lowCtx.putImageData(pixels, 0, 0);
-    return lowCanvas;
+    return source;
   }
 
   function applyPencilSketch(pixels, width, height) {
@@ -460,14 +438,100 @@
     var scale = Math.min(1, maxSide / Math.max(canvas.width, canvas.height));
     resultCanvas.width = Math.max(2, Math.round(canvas.width * scale));
     resultCanvas.height = Math.max(2, Math.round(canvas.height * scale));
-    showStatus("색연필로 그림을 그리고 있어요…");
+    capturedCanvas.width = resultCanvas.width;
+    capturedCanvas.height = resultCanvas.height;
+    drawCurrentVideo(capturedCtx, capturedCanvas.width, capturedCanvas.height);
+
+    var frame = getFrameRect(resultCanvas.width, resultCanvas.height);
+    var screen = getScreenRect(frame);
+    var cropScale = Math.min(1, 1200 / Math.max(screen.w, screen.h));
+    cropCanvas.width = Math.max(2, Math.round(screen.w * cropScale));
+    cropCanvas.height = Math.max(2, Math.round(screen.h * cropScale));
+    cropCtx.drawImage(capturedCanvas, screen.x, screen.y, screen.w, screen.h, 0, 0, cropCanvas.width, cropCanvas.height);
+
+    showStatus("AI가 색연필 그림을 그리고 있어요…");
     setTimeout(function () {
-      drawScene(resultCtx, resultCanvas.width, resultCanvas.height, true);
-      resultSheet.classList.add("open");
-      resultSheet.setAttribute("aria-hidden", "false");
-      hideStatus();
-      shutterButton.disabled = false;
+      createAIResult(frame, screen);
     }, 30);
+  }
+
+  async function createAIResult(frame, screen) {
+    var transformed;
+    var usedFallback = false;
+    try {
+      transformed = await transformWithAI(cropCanvas);
+    } catch (error) {
+      transformed = createCanvasFallback(cropCanvas);
+      usedFallback = true;
+    }
+
+    resultCtx.drawImage(capturedCanvas, 0, 0, resultCanvas.width, resultCanvas.height);
+    resultCtx.drawImage(transformed, screen.x, screen.y, screen.w, screen.h);
+    drawPaperFrame(resultCtx, frame, screen, null, resultCanvas.width, resultCanvas.height, transformed);
+    resultSheet.classList.add("open");
+    resultSheet.setAttribute("aria-hidden", "false");
+    hideStatus();
+    shutterButton.disabled = false;
+    if (usedFallback) showToast("AI 연결이 어려워 기기 안의 Paper Toon 효과를 사용했어요.");
+  }
+
+  // 이미지 제공자를 바꿀 때 이 함수의 내부 구현만 교체하면 됩니다.
+  async function transformWithAI(sourceCanvas) {
+    var blob = await canvasToBlob(sourceCanvas, "image/jpeg", .9);
+    var imageData = await blobToDataURL(blob);
+    var response = await fetch("/api/transform", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: imageData, width: sourceCanvas.width, height: sourceCanvas.height })
+    });
+    if (!response.ok) throw new Error("AI transform failed");
+    var payload = await response.json();
+    if (!payload.image) throw new Error("AI image missing");
+    return loadImageToCanvas(payload.image, sourceCanvas.width, sourceCanvas.height);
+  }
+
+  function createCanvasFallback(sourceCanvas) {
+    lowCanvas.width = sourceCanvas.width;
+    lowCanvas.height = sourceCanvas.height;
+    lowCtx.drawImage(sourceCanvas, 0, 0);
+    var pixels = lowCtx.getImageData(0, 0, lowCanvas.width, lowCanvas.height);
+    applyPencilSketch(pixels, lowCanvas.width, lowCanvas.height);
+    lowCtx.putImageData(pixels, 0, 0);
+    return lowCanvas;
+  }
+
+  function canvasToBlob(sourceCanvas, type, quality) {
+    return new Promise(function (resolve, reject) {
+      sourceCanvas.toBlob(function (blob) { blob ? resolve(blob) : reject(new Error("Canvas encoding failed")); }, type, quality);
+    });
+  }
+
+  function blobToDataURL(blob) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(reader.result); };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function loadImageToCanvas(dataURL, width, height) {
+    return new Promise(function (resolve, reject) {
+      var image = new Image();
+      image.onload = function () {
+        var output = document.createElement("canvas");
+        output.width = width; output.height = height;
+        drawImageCover(output.getContext("2d"), image, width, height);
+        resolve(output);
+      };
+      image.onerror = reject;
+      image.src = dataURL;
+    });
+  }
+
+  function drawImageCover(context, image, width, height) {
+    var crop = coverCrop(image.naturalWidth, image.naturalHeight, width, height);
+    context.drawImage(image, crop.x, crop.y, crop.w, crop.h, 0, 0, width, height);
   }
 
   function closeResultSheet() {
